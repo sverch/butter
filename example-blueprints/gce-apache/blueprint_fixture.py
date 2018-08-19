@@ -7,6 +7,7 @@ running default apache.
 import requests
 from butter.testutils.blueprint_tester import call_with_retries
 from butter.testutils.fixture import BlueprintTestInterface, SetupInfo
+from butter.types.networking import CidrBlock
 
 RETRY_DELAY = float(10.0)
 RETRY_COUNT = int(6)
@@ -15,20 +16,20 @@ class BlueprintTest(BlueprintTestInterface):
     """
     Fixture class that creates the dependent resources.
     """
-    def setup_before_tested_service(self, network_name):
+    def setup_before_tested_service(self, network):
         """
         Create the dependent services needed to test this service.
         """
         # Since this service has no dependencies, do nothing.
         return SetupInfo({}, {})
 
-    def setup_after_tested_service(self, network_name, service_name,
-                                   setup_info):
+    def setup_after_tested_service(self, network, service, setup_info):
         """
         Do any setup that must happen after the service under test has been
         created.
         """
-        self.client.paths.expose(network_name, service_name, 80)
+        internet = CidrBlock("0.0.0.0/0")
+        self.client.paths.add(internet, service, 80)
 
     def verify(self, network_name, service_name, setup_info):
         """
@@ -36,8 +37,8 @@ class BlueprintTest(BlueprintTestInterface):
         verify that it's behaving as expected.
         """
         def check_responsive():
-            service = self.client.instances.discover(network_name, service_name)
-            public_ips = [i["PublicIp"] for i in service["Instances"]]
+            service = self.client.service.get(network_name, service_name)
+            public_ips = [i.public_ip for s in service.subnetworks for i in s.instances]
             assert public_ips
             for public_ip in public_ips:
                 response = requests.get("http://%s" % public_ip)
