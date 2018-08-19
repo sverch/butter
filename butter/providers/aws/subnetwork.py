@@ -46,7 +46,7 @@ class SubnetworkClient:
         2. Create subnets across availability zones.
         """
         # 1. Get ID ov VPC to provision subnets in.
-        dc_info = self.network.discover(network_name)
+        dc_info = self.network.get(network_name)
         if not dc_info:
             raise BadEnvironmentStateException("Network %s not found" %
                                                network_name)
@@ -63,9 +63,10 @@ class SubnetworkClient:
                            self.availability_zones.get_availability_zones())
         for subnet_cidr, availability_zone in cidr_az_list:
             subnet_info = canonicalize_subnetwork_info(
+                None,
                 self.subnets.create(subnetwork_name, subnet_cidr,
                                     availability_zone, dc_info["Id"],
-                                    RETRY_COUNT, RETRY_DELAY))
+                                    RETRY_COUNT, RETRY_DELAY), [])
             subnets_info.append(subnet_info)
 
         # 3. Make sure we have a route to the internet.
@@ -87,7 +88,7 @@ class SubnetworkClient:
         ec2 = boto3.client("ec2")
 
         # 1. Discover current VPC.
-        vpc_id = self.network.discover(network_name)["Id"]
+        vpc_id = self.network.get(network_name)["Id"]
 
         # 2. Get the internet gateway for this VPC.
         igw_id = self.internet_gateways.get_internet_gateway(vpc_id)
@@ -112,12 +113,12 @@ class SubnetworkClient:
         Discover a subnetwork group named "network_name" and "subnetwork_name".
         """
         ec2 = boto3.client("ec2")
-        dc_id = self.network.discover(network_name)["Id"]
+        dc_id = self.network.get(network_name)["Id"]
         subnets = ec2.describe_subnets(Filters=[{'Name': "vpc-id",
                                                  'Values': [dc_id]},
                                                 {'Name': "tag:Name",
                                                  'Values': [subnetwork_name]}])
-        return [canonicalize_subnetwork_info(subnet)
+        return [canonicalize_subnetwork_info(None, subnet, [])
                 for subnet in subnets["Subnets"]]
 
     def destroy(self, network_name, subnetwork_name):
@@ -139,7 +140,7 @@ class SubnetworkClient:
                       in self.discover(network_name, subnetwork_name)]
 
         # 1. Discover the current VPC.
-        dc_id = self.network.discover(network_name)["Id"]
+        dc_id = self.network.get(network_name)["Id"]
 
         # 2. Destroy route tables.
         def delete_route_table(route_table):
@@ -219,5 +220,5 @@ class SubnetworkClient:
             if subnet_name not in subnet_info[vpc_name]:
                 subnet_info[vpc_name][subnet_name] = []
             subnet_info[vpc_name][subnet_name].append(
-                canonicalize_subnetwork_info(subnet))
+                canonicalize_subnetwork_info(None, subnet, []))
         return subnet_info

@@ -19,9 +19,9 @@ class NetworkClient:
         import butter
         client = butter.Client(provider, credentials)
         client.network.create("network", blueprint="tests/blueprints/network.yml")
-        client.network.discover("network")
+        client.network.get("network")
         client.network.list()
-        client.network.destroy("network")
+        client.network.destroy(client.network.get("network"))
 
     The above commands will create and destroy a network named "network".
     """
@@ -41,29 +41,29 @@ class NetworkClient:
         logger.info('Creating network %s with blueprint %s', name, blueprint)
         return self.network.create(name, blueprint)
 
-    def discover(self, name):
+    def get(self, name):
         """
-        Discover a network named "name" and return some data about it.
+        Get a network named "name" and return some data about it.
 
         Example:
 
-            client.network.discover("mynetwork")
+            client.network.get("mynetwork")
 
         """
-        logger.info('Discovering network %s', name)
-        return self.network.discover(name)
+        logger.info('Getting network %s', name)
+        return self.network.get(name)
 
-    def destroy(self, name):
+    def destroy(self, network):
         """
-        Destroy a network named "name".
+        Destroy the given network.
 
         Example:
 
-            client.network.destroy("mynetwork")
+            client.network.destroy(client.network.get("mynetwork"))
 
         """
-        logger.info('Destroying network %s', name)
-        return self.network.destroy(name)
+        logger.info('Destroying network %s', network)
+        return self.network.destroy(network)
 
     def list(self):
         """

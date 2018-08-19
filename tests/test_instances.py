@@ -7,6 +7,7 @@ import pytest
 import boto3
 from moto import mock_ec2, mock_autoscaling, mock_elb, mock_route53
 import butter
+from butter.types.common import Service
 from butter.testutils.blueprint_tester import generate_unique_name
 
 EXAMPLE_BLUEPRINTS_DIR = os.path.join(os.path.dirname(__file__),
@@ -35,24 +36,35 @@ def run_instances_test(provider, credentials):
     network_name = generate_unique_name("unittest")
 
     # Provision all the resources
-    client.network.create(network_name, blueprint=NETWORK_BLUEPRINT)
+    test_network = client.network.create(network_name, blueprint=NETWORK_BLUEPRINT)
     if provider == "aws":
-        client.instances.create(network_name, "web-lb", AWS_SERVICE_BLUEPRINT, {})
-        client.instances.create(network_name, "web", AWS_SERVICE_BLUEPRINT, {})
+        lb_service = client.instances.create(test_network, "web-lb", AWS_SERVICE_BLUEPRINT, {})
+        web_service = client.instances.create(test_network, "web", AWS_SERVICE_BLUEPRINT, {})
     else:
         assert provider == "gce"
-        client.instances.create(network_name, "web-lb", GCE_SERVICE_BLUEPRINT, {})
-        client.instances.create(network_name, "web", GCE_SERVICE_BLUEPRINT, {})
+        lb_service = client.instances.create(test_network, "web-lb", GCE_SERVICE_BLUEPRINT, {})
+        web_service = client.instances.create(test_network, "web", GCE_SERVICE_BLUEPRINT, {})
 
-    assert client.instances.discover(network_name, "web")["Network"] == network_name
-    assert client.instances.discover(network_name, "web")["Id"] == "web"
-    assert client.instances.discover(network_name, "web-lb")["Network"] == network_name
-    assert client.instances.discover(network_name, "web-lb")["Id"] == "web-lb"
+    def validate_service(network, service):
+        discovered_service = client.instances.discover(network, service.name)
+        assert discovered_service.network == network.name
+        assert discovered_service.name == service.name
+        assert discovered_service == service
+        assert isinstance(discovered_service, Service)
+        assert isinstance(service, Service)
+        instances = []
+        for subnetwork in discovered_service.subnetworks:
+            assert subnetwork.instances
+            instances.extend(subnetwork.instances)
+        assert len(instances) == 3
+
+    validate_service(test_network, lb_service)
+    validate_service(test_network, web_service)
 
     if provider == "aws":
         # Networking
         ec2 = boto3.client("ec2")
-        dc_id = client.network.discover(network_name)["Id"]
+        dc_id = client.network.discover(network_name).network_id
         subnets = ec2.describe_subnets(Filters=[{
             'Name': 'vpc-id',
             'Values': [dc_id]}])
@@ -115,7 +127,7 @@ def run_instances_test(provider, credentials):
         assert web_asg_vpc_id == web_lb_asg_vpc_id
 
     # Make sure they are gone when I destroy them
-    client.instances.destroy(network_name, "web-lb")
+    client.instances.destroy(lb_service)
 
     if provider == "aws":
         # Networking
@@ -139,7 +151,7 @@ def run_instances_test(provider, credentials):
         assert asg["LaunchConfigurationName"] == "%s.web" % network_name
 
     # Now destroy the rest
-    client.instances.destroy(network_name, "web")
+    client.instances.destroy(web_service)
 
     if provider == "aws":
         # AutoScalingGroups
@@ -152,7 +164,7 @@ def run_instances_test(provider, credentials):
         assert not asgs["AutoScalingGroups"]
 
     # Clean up the VPC
-    client.network.destroy(network_name)
+    client.network.destroy(test_network)
 
 
 @mock_ec2

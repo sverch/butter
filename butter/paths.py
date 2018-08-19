@@ -7,6 +7,9 @@ does the transformation to and from the underlying firewall rules.
 """
 from butter.log import logger
 from butter.providers import get_provider
+# Importing this just so it's available in this namespace.
+# pylint: disable=unused-import
+from butter.types.networking import CidrBlock
 
 
 class PathsClient:
@@ -21,8 +24,8 @@ class PathsClient:
         from butter.types.networking import Service, CidrBlock
         client = butter.Client(provider, credentials)
 
-        internal_service = Service(network_name, "internal_service")
-        load_balancer = Service(network_name, "load_balancer")
+        internal_service = client.service.get(network_name, "internal_service")
+        load_balancer = client.service.get(network_name, "load_balancer")
         internet = CidrBlock("0.0.0.0/0")
         client.paths.add(load_balancer, internal_service, 80)
         client.paths.add(internet, load_balancer, 443)

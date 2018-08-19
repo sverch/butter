@@ -36,7 +36,7 @@ class NetworkClient:
         Create new network named "name" with blueprint file at "blueprint".
         """
         ec2 = boto3.client("ec2")
-        if self.discover(name):
+        if self.get(name):
             raise DisallowedOperationException(
                 "Found existing VPC named: %s" % name)
         blueprint = NetworkBlueprint(blueprint)
@@ -60,7 +60,7 @@ class NetworkClient:
                     ec2.create_tags(Resources=[vpc_id],
                                     Tags=[{"Key": "Name",
                                            "Value": name}])
-                    if not self.discover(name):
+                    if not self.get(name):
                         time.sleep(float(RETRY_DELAY))
                     else:
                         break
@@ -74,12 +74,12 @@ class NetworkClient:
         except OperationTimedOut as exception:
             ec2.delete_vpc(VpcId=vpc_id)
             raise exception
-        return canonicalize_network_info(name, vpc["Vpc"])
+        return canonicalize_network_info(name, vpc["Vpc"], boto3.session.Session().region_name)
 
     # pylint: disable=no-self-use
-    def discover(self, name):
+    def get(self, name):
         """
-        Discover a network named "name" and return some data about it.
+        Get a network named "name" and return some data about it.
         """
         ec2 = boto3.client("ec2")
         deployment_filter = {'Name': "tag:Name",
@@ -92,7 +92,8 @@ class NetworkClient:
         elif not vpcs["Vpcs"]:
             return None
         else:
-            return canonicalize_network_info(name, vpcs["Vpcs"][0])
+            return canonicalize_network_info(name, vpcs["Vpcs"][0],
+                                             boto3.session.Session().region_name)
 
     # pylint: disable=no-self-use
     def destroy(self, name):
@@ -100,7 +101,7 @@ class NetworkClient:
         Destroy a network named "name".
         """
         ec2 = boto3.client("ec2")
-        dc_info = self.discover(name)
+        dc_info = self.get(name)
         if not dc_info:
             return None
 
@@ -176,12 +177,8 @@ class NetworkClient:
             return None
 
         vpcs = ec2.describe_vpcs()
-        named_vpcs = []
-        unnamed_vpcs = []
+        result = []
         for vpc in vpcs["Vpcs"]:
             name = get_deployment_tag(vpc)
-            if name:
-                named_vpcs.append(canonicalize_network_info(name, vpc))
-            else:
-                unnamed_vpcs.append(canonicalize_network_info(None, vpc))
-        return {"Named": named_vpcs, "Unnamed": unnamed_vpcs}
+            result.append(canonicalize_network_info(name, vpc, boto3.session.Session().region_name))
+        return result

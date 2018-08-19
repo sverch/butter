@@ -18,11 +18,12 @@ class InstancesClient:
 
         import butter
         client = butter.Client(provider, credentials)
-        client.instances.create("network", "public",
+        mynetwork = client.network.create("network", blueprint="tests/blueprints/network.yml")
+        client.instances.create(mynetwork, "public",
                                  blueprint="tests/blueprints/service.yml")
-        client.instances.discover("network", "public")
+        myservice = client.instances.get(mynetwork, "public")
         client.instances.list()
-        client.instances.destroy("network", "public")
+        client.instances.destroy(myservice)
 
     The above commands will create and destroy a group of instances named "public" in the network
     "network".
@@ -31,36 +32,32 @@ class InstancesClient:
         self.instances = get_provider(provider).instances.InstancesClient(
             credentials)
 
-    def create(self, network_name, subnetwork_name, blueprint,
+    def create(self, network, subnetwork_name, blueprint,
                template_vars=None):
         """
-        Create a group of instances in "network_name" named "subnetwork_name" with blueprint file at
+        Create a group of instances in "network" named "subnetwork_name" with blueprint file at
         "blueprint".
 
         "template_vars" are passed to the initialization scripts as jinja2
         variables.
         """
         logger.info('Creating instances %s in network %s with blueprint %s and '
-                    'template_vars %s', subnetwork_name, network_name,
-                    blueprint, template_vars)
-        return self.instances.create(network_name, subnetwork_name, blueprint,
-                                     template_vars)
+                    'template_vars %s', subnetwork_name, network, blueprint, template_vars)
+        return self.instances.create(network, subnetwork_name, blueprint, template_vars)
 
-    def discover(self, network_name, subnetwork_name):
+    def get(self, network, service_name):
         """
-        Discover a group of instances in "network_name" named "subnetwork_name".
+        Get a service in "network" named "service_name".
         """
-        logger.info('Discovering instances %s in network %s', subnetwork_name,
-                    network_name)
-        return self.instances.discover(network_name, subnetwork_name)
+        logger.info('Discovering instances %s in network %s', service_name, network)
+        return self.instances.get(network, service_name)
 
-    def destroy(self, network_name, subnetwork_name):
+    def destroy(self, service):
         """
-        Destroy a group of instances named "subnetwork_name" in "network_name".
+        Destroy a service described by the "service" object.
         """
-        logger.info('Destroying instances %s in network %s', subnetwork_name,
-                    network_name)
-        return self.instances.destroy(network_name, subnetwork_name)
+        logger.info('Destroying service %s', service)
+        return self.instances.destroy(service)
 
     def list(self):
         """
