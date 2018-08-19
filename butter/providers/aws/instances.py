@@ -15,7 +15,8 @@ from butter.util.blueprint import InstancesBlueprint
 from butter.util.instance_fitter import get_fitting_instance
 from butter.util.exceptions import (BadEnvironmentStateException,
                                     OperationTimedOut)
-from butter.providers.aws import (subnetwork, network)
+import butter.providers.aws.network
+import butter.providers.aws.subnetwork
 from butter.providers.aws.impl.asg import (ASG, AsgName)
 from butter.providers.aws.impl.security_groups import SecurityGroups
 from butter.providers.aws.log import logger
@@ -33,25 +34,25 @@ class InstancesClient:
 
     def __init__(self, credentials):
         self.credentials = credentials
-        self.subnetwork = subnetwork.SubnetworkClient(credentials)
-        self.network = network.NetworkClient(credentials)
+        self.subnetwork = butter.providers.aws.subnetwork.SubnetworkClient(credentials)
+        self.network = butter.providers.aws.network.NetworkClient(credentials)
         self.asg = ASG(credentials)
         self.security_groups = SecurityGroups(credentials)
 
     # pylint: disable=too-many-arguments
-    def create(self, network_name, subnetwork_name, blueprint,
+    def create(self, network, service_name, blueprint,
                template_vars=None, count=3):
         """
-        Create a group of instances in "network_name" named "subnetwork_name" with blueprint file at
+        Create a group of instances in "network" named "service_name" with blueprint file at
         "blueprint".
         """
         subnet_ids = [subnet_info["Id"] for subnet_info
-                      in self.subnetwork.create(network_name, subnetwork_name,
+                      in self.subnetwork.create(network, service_name,
                                                 blueprint=blueprint)]
 
         # Security Group
-        asg_name = AsgName(network=network_name, subnetwork=subnetwork_name)
-        vpc_id = self.network.discover(network_name)["Id"]
+        asg_name = AsgName(network=network.name, subnetwork=service_name)
+        vpc_id = network.network_id
         security_group_id = self.security_groups.create(str(asg_name), vpc_id)
 
         # Launch Configuration
@@ -92,19 +93,19 @@ class InstancesClient:
             HealthCheckType='ELB', HealthCheckGracePeriod=120)
 
         def wait_until(state):
-            asg = self.discover(network_name, subnetwork_name)
+            asg = self.get(network.name, service_name)
             retries = 0
             while len([instance for instance in asg["Instances"]
                        if instance["State"] == state]) < count:
                 logger.info("Waiting for instance creation in asg: %s", asg)
-                asg = self.discover(network_name, subnetwork_name)
+                asg = self.get(network, service_name)
                 retries = retries + 1
                 if retries > 60:
                     raise OperationTimedOut("Timed out waiting for ASG scale down")
                 time.sleep(float(10))
         wait_until("running")
 
-        return self.discover(network_name, subnetwork_name)
+        return self.get(network, service_name)
 
     def list(self):
         """
@@ -116,23 +117,22 @@ class InstancesClient:
         for asg in asgs["AutoScalingGroups"]:
             asg_name = AsgName(name_string=asg["AutoScalingGroupName"])
             if asg_name.network:
-                services.append(self.discover(asg_name.network,
-                                              asg_name.subnetwork))
+                services.append(self.get(asg_name.network, asg_name.subnetwork))
         return services
 
     # pylint: disable=no-self-use
-    def discover(self, network_name, subnetwork_name):
+    def get(self, network, service_name):
         """
-        Discover a group of subnetworks in "network_name" named "subnetwork_name".
+        Discover a service in "network" named "service_name".
         """
         logger.info("Discovering autoscaling group named %s in network: %s",
-                    subnetwork_name, network_name)
+                    service_name, network)
 
-        def discover_asg(network_name, subnetwork_name):
+        def discover_asg(network_name, service_name):
             autoscaling = boto3.client("autoscaling")
             logger.debug("Discovering auto scaling groups with name: %s",
-                         subnetwork_name)
-            asg_name = AsgName(network=network_name, subnetwork=subnetwork_name)
+                         service_name)
+            asg_name = AsgName(network=network_name, subnetwork=service_name)
             asgs = autoscaling.describe_auto_scaling_groups(
                 AutoScalingGroupNames=[str(asg_name)])
             logger.debug("Found asgs: %s", asgs)
@@ -154,14 +154,14 @@ class InstancesClient:
         discovery_retries = 0
         while discovery_retries < RETRY_COUNT:
             try:
-                asg = discover_asg(network_name, subnetwork_name)
+                asg = discover_asg(network.name, service_name)
                 if not asg:
                     return None
                 instance_ids = [instance["InstanceId"] for instance
                                 in asg["Instances"]]
                 instances = discover_instances(instance_ids)
-                return canonicalize_instances_info(network_name,
-                                                   subnetwork_name, instances)
+                return canonicalize_instances_info(network.name,
+                                                   service_name, instances)
             except ClientError as client_error:
                 # There is a race between when I discover the autoscaling group
                 # itself and when I try to search for the instances inside it,
@@ -177,27 +177,26 @@ class InstancesClient:
             if discovery_retries >= RETRY_COUNT:
                 raise OperationTimedOut(
                     "Exceeded retries while discovering %s, in network %s" %
-                    (subnetwork_name, network_name))
+                    (service_name, network))
             time.sleep(float(RETRY_DELAY))
 
-    def destroy(self, network_name, subnetwork_name):
+    def destroy(self, service):
         """
-        Destroy a group of instances named "subnetwork_name" in "network_name".
+        Destroy a group of instances described by "service".
         """
-        logger.debug("Attempting to destroy: %s, %s", network_name,
-                     subnetwork_name)
-        asg_name = AsgName(network=network_name, subnetwork=subnetwork_name)
+        logger.debug("Attempting to destroy: %s", service)
+        asg_name = AsgName(network=service.network.name, subnetwork=service.name)
 
         self.asg.destroy_auto_scaling_group_instances(asg_name)
 
         # Wait for instances to be gone.  Need to do this before we can delete
         # the actual ASG otherwise it will error.
-        asg = self.discover(network_name, subnetwork_name)
+        asg = self.get(service.network, service.name)
         retries = 0
         while asg and [instance for instance in asg["Instances"]
                        if instance["State"] != "terminated"]:
             logger.info("Waiting for instance termination in asg: %s", asg)
-            asg = self.discover(network_name, subnetwork_name)
+            asg = self.get(service.network, service.name)
             retries = retries + 1
             if retries > 60:
                 raise OperationTimedOut("Timed out waiting for ASG scale down")
@@ -207,19 +206,19 @@ class InstancesClient:
 
         # Wait for ASG to be gone.  Need to wait for this because it's a
         # dependency of the launch configuration.
-        asg = self.discover(network_name, subnetwork_name)
+        asg = self.get(service.network, service.name)
         retries = 0
         while asg:
             logger.info("Waiting for asg deletion: %s", asg)
-            asg = self.discover(network_name, subnetwork_name)
+            asg = self.get(service.network, service.name)
             retries = retries + 1
             if retries > 60:
                 raise OperationTimedOut("Timed out waiting for ASG deletion")
             time.sleep(float(10))
 
-        vpc_id = self.network.discover(network_name)["Id"]
+        vpc_id = self.network.get(service.network).network_id
         lc_security_group = self.asg.get_launch_configuration_security_group(
-            network_name, subnetwork_name)
+            service.network, service.name)
         self.asg.destroy_launch_configuration(asg_name)
         if lc_security_group:
             self.security_groups.delete_referencing_rules(vpc_id,
@@ -230,7 +229,7 @@ class InstancesClient:
             self.security_groups.delete_by_name(vpc_id, str(asg_name),
                                                 RETRY_COUNT, RETRY_DELAY)
 
-        self.subnetwork.destroy(network_name, subnetwork_name)
+        self.subnetwork.destroy(service.network, service.name)
 
     def node_types(self):
         """
