@@ -21,15 +21,12 @@ class PathsClient:
     Usage:
 
         import butter
-        from butter.types.networking import Service, CidrBlock
         client = butter.Client(provider, credentials)
-
-        internal_service = client.service.get(network_name, "internal_service")
-        load_balancer = client.service.get(network_name, "load_balancer")
+        internal_service = client.service.get(network, "internal_service")
+        load_balancer = client.service.get(network, "load_balancer")
         internet = CidrBlock("0.0.0.0/0")
         client.paths.add(load_balancer, internal_service, 80)
         client.paths.add(internet, load_balancer, 443)
-
         client.paths.list()
         client.graph()
 

@@ -1,7 +1,7 @@
 """
 Schemas of the results returned by various API calls for AWS.
 """
-from butter.types.common import Network, Subnetwork, Service, Instance
+from butter.types.common import Network, Subnetwork, Instance
 from butter.util.storage_size_parser import parse_storage_size
 
 def canonicalize_network_info(name, vpc, region):
@@ -17,12 +17,7 @@ def canonicalize_subnetwork_info(name, subnet, instances):
     return Subnetwork(name=name, subnetwork_id=subnet["SubnetId"], cidr_block=subnet["CidrBlock"],
                       region=subnet["AvailabilityZone"][:-1],
                       availability_zone=subnet["AvailabilityZone"],
-                      instances=[
-                          canonicalize_instance_info(instance)
-                          for reservation in instances["Reservations"]
-                          for instance in reservation["Instances"]
-                          if instance["SubnetId"] == subnet["SubnetId"]
-                          ])
+                      instances=instances)
 
 def canonicalize_instance_info(instance):
     """
@@ -32,12 +27,6 @@ def canonicalize_instance_info(instance):
                     private_ip=instance.get("PrivateIpAddress", "N/A"),
                     public_ip=instance.get("PublicIpAddress", "N/A"),
                     state=instance["State"]["Name"])
-
-def canonicalize_service_info(network, name, subnetworks):
-    """
-    Convert what is returned from AWS into the butter standard format.
-    """
-    return Service(network=network, name=name, subnetworks=subnetworks)
 
 def canonicalize_node_size(node):
     """

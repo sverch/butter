@@ -11,7 +11,7 @@ import math
 
 from libcloud.common.google import ResourceNotFoundError
 
-from butter.util.blueprint import InstancesBlueprint, NetworkBlueprint
+from butter.util.blueprint import ServiceBlueprint, NetworkBlueprint
 from butter.util.subnet_generator import generate_subnets
 from butter.util.exceptions import NotEnoughIPSpaceException
 from butter.providers.gce.driver import get_gce_driver
@@ -40,7 +40,7 @@ class SubnetworkClient:
 
         # Provision subnets across zones
         subnets_info = []
-        instances_blueprint = InstancesBlueprint(blueprint)
+        instances_blueprint = ServiceBlueprint(blueprint)
         max_count = instances_blueprint.max_count()
         prefix = 32 - int(math.log(max_count, 2))
         region = DEFAULT_REGION

@@ -96,18 +96,15 @@ class NetworkClient:
                                              boto3.session.Session().region_name)
 
     # pylint: disable=no-self-use
-    def destroy(self, name):
+    def destroy(self, network):
         """
-        Destroy a network named "name".
+        Destroy a network given the provided network object.
         """
         ec2 = boto3.client("ec2")
-        dc_info = self.get(name)
-        if not dc_info:
-            return None
 
         # Check to see if we have any subnets, otherwise bail out
         subnets = ec2.describe_subnets(Filters=[{'Name': 'vpc-id',
-                                                 'Values': [dc_info["Id"]]}])
+                                                 'Values': [network.network_id]}])
         if subnets["Subnets"]:
             message = "Found subnets in network, cannot delete: %s" % subnets
             logger.error(message)
@@ -116,7 +113,7 @@ class NetworkClient:
         # Delete internet gateway if it's no longer referenced
         igw = ec2.describe_internet_gateways(
             Filters=[{'Name': 'attachment.vpc-id',
-                      'Values': [dc_info["Id"]]}])
+                      'Values': [network.network_id]}])
         igw_id = None
         if len(igw["InternetGateways"]) == 1:
             igw_id = igw["InternetGateways"][0]["InternetGatewayId"]
@@ -124,16 +121,16 @@ class NetworkClient:
             raise Exception(
                 "Invalid response from describe_internet_gateways: %s" %
                 igw)
-        if igw_id and not self.internet_gateways.route_count(dc_info["Id"],
+        if igw_id and not self.internet_gateways.route_count(network.network_id,
                                                              igw_id):
             ec2.detach_internet_gateway(InternetGatewayId=igw_id,
-                                        VpcId=dc_info["Id"])
+                                        VpcId=network.network_id)
             ec2.delete_internet_gateway(InternetGatewayId=igw_id)
 
         # Since we check above that there are no subnets, and therefore nothing
         # deployed in this VPC, for now assume it is safe to delete.
         security_groups = ec2.describe_security_groups(
-            Filters=[{'Name': 'vpc-id', 'Values': [dc_info["Id"]]}])
+            Filters=[{'Name': 'vpc-id', 'Values': [network.network_id]}])
         for security_group in security_groups["SecurityGroups"]:
             if security_group["GroupName"] == "default":
                 continue
@@ -143,18 +140,18 @@ class NetworkClient:
 
         # Delete internet gateway, also safe because our subnets are gone.
         igws = ec2.describe_internet_gateways(
-            Filters=[{'Name': 'attachment.vpc-id', 'Values': [dc_info["Id"]]}])
+            Filters=[{'Name': 'attachment.vpc-id', 'Values': [network.network_id]}])
         logger.info("Deleting internet gateways: %s", igws)
         for igw in igws["InternetGateways"]:
             logger.info("Deleting internet gateway: %s", igw)
             igw_id = igw["InternetGatewayId"]
             ec2.detach_internet_gateway(InternetGatewayId=igw_id,
-                                        VpcId=dc_info["Id"])
+                                        VpcId=network.network_id)
             ec2.delete_internet_gateway(InternetGatewayId=igw_id)
 
         # Now, actually delete the VPC
         try:
-            deletion_result = ec2.delete_vpc(VpcId=dc_info["Id"])
+            deletion_result = ec2.delete_vpc(VpcId=network.network_id)
         except ec2.exceptions.ClientError as client_error:
             if client_error.response['Error']['Code'] == 'DependencyViolation':
                 logger.info("Dependency violation deleting VPC: %s", client_error)

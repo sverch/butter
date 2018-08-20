@@ -1,7 +1,7 @@
 """
-Butter Instances on AWS
+Butter Service on AWS
 
-This is the AWS implmentation for the instances API, a high level interface to manage groups of
+This is the AWS implmentation for the service API, a high level interface to manage groups of
 instances.
 """
 import time
@@ -11,30 +11,31 @@ import requests
 import dateutil.parser
 from botocore.exceptions import ClientError
 
-from butter.util.blueprint import InstancesBlueprint
+from butter.util.blueprint import ServiceBlueprint
 from butter.util.instance_fitter import get_fitting_instance
 from butter.util.exceptions import (BadEnvironmentStateException,
                                     OperationTimedOut)
 import butter.providers.aws.network
-import butter.providers.aws.subnetwork
+import butter.providers.aws.impl.subnetwork
 from butter.providers.aws.impl.asg import (ASG, AsgName)
 from butter.providers.aws.impl.security_groups import SecurityGroups
 from butter.providers.aws.log import logger
-from butter.providers.aws.schemas import (canonicalize_instances_info,
+from butter.providers.aws.schemas import (canonicalize_instance_info,
                                           canonicalize_node_size)
+from butter.types.common import Service
 
 RETRY_COUNT = int(60)
 RETRY_DELAY = float(1.0)
 
 
-class InstancesClient:
+class ServiceClient:
     """
     Client object to manage instances.
     """
 
     def __init__(self, credentials):
         self.credentials = credentials
-        self.subnetwork = butter.providers.aws.subnetwork.SubnetworkClient(credentials)
+        self.subnetwork = butter.providers.aws.impl.subnetwork.SubnetworkClient(credentials)
         self.network = butter.providers.aws.network.NetworkClient(credentials)
         self.asg = ASG(credentials)
         self.security_groups = SecurityGroups(credentials)
@@ -46,7 +47,7 @@ class InstancesClient:
         Create a group of instances in "network" named "service_name" with blueprint file at
         "blueprint".
         """
-        subnet_ids = [subnet_info["Id"] for subnet_info
+        subnet_ids = [subnet_info.subnetwork_id for subnet_info
                       in self.subnetwork.create(network, service_name,
                                                 blueprint=blueprint)]
 
@@ -70,7 +71,7 @@ class InstancesClient:
             return result_image["ImageId"]
 
         def create_launch_configuration(asg_name, blueprint, template_vars):
-            instances_blueprint = InstancesBlueprint(blueprint, template_vars)
+            instances_blueprint = ServiceBlueprint(blueprint, template_vars)
             ami_id = lookup_ami(instances_blueprint.image())
             user_data = instances_blueprint.runtime_scripts()
             associate_public_ip = instances_blueprint.public_ip()
@@ -93,10 +94,15 @@ class InstancesClient:
             HealthCheckType='ELB', HealthCheckGracePeriod=120)
 
         def wait_until(state):
-            asg = self.get(network.name, service_name)
+            asg = self.get(network, service_name)
+
+            def instance_list(service, state):
+                return [instance for subnetwork in service.subnetworks
+                        for instance in subnetwork.instances
+                        if instance.state == state]
+
             retries = 0
-            while len([instance for instance in asg["Instances"]
-                       if instance["State"] == state]) < count:
+            while len(instance_list(asg, state)) < count:
                 logger.info("Waiting for instance creation in asg: %s", asg)
                 asg = self.get(network, service_name)
                 retries = retries + 1
@@ -117,7 +123,7 @@ class InstancesClient:
         for asg in asgs["AutoScalingGroups"]:
             asg_name = AsgName(name_string=asg["AutoScalingGroupName"])
             if asg_name.network:
-                services.append(self.get(asg_name.network, asg_name.subnetwork))
+                services.append(self.get(self.network.get(asg_name.network), asg_name.subnetwork))
         return services
 
     # pylint: disable=no-self-use
@@ -147,21 +153,26 @@ class InstancesClient:
         def discover_instances(instance_ids):
             ec2 = boto3.client("ec2")
             logger.debug("Discovering instances: %s", instance_ids)
+            instances = {"Reservations": []}
+            # Need this check because if we pass an empty list the API returns all instances
             if instance_ids:
-                return ec2.describe_instances(InstanceIds=instance_ids)
-            return {"Reservations": []}
+                instances = ec2.describe_instances(InstanceIds=instance_ids)
+            return [instance
+                    for reservation in instances["Reservations"]
+                    for instance in reservation["Instances"]]
 
+        # 1. Get List Of Instances
         discovery_retries = 0
+        discovery_complete = False
         while discovery_retries < RETRY_COUNT:
             try:
                 asg = discover_asg(network.name, service_name)
                 if not asg:
                     return None
-                instance_ids = [instance["InstanceId"] for instance
-                                in asg["Instances"]]
+                instance_ids = [instance["InstanceId"] for instance in asg["Instances"]]
                 instances = discover_instances(instance_ids)
-                return canonicalize_instances_info(network.name,
-                                                   service_name, instances)
+                logger.debug("Discovered instances: %s", instances)
+                discovery_complete = True
             except ClientError as client_error:
                 # There is a race between when I discover the autoscaling group
                 # itself and when I try to search for the instances inside it,
@@ -170,7 +181,10 @@ class InstancesClient:
                 if client_error.response["Error"]["Code"] == "InvalidInstanceID.NotFound":
                     pass
                 else:
-                    raise client_error
+                    raise
+
+            if discovery_complete:
+                break
             discovery_retries = discovery_retries + 1
             logger.info("Instance discovery retry number: %s",
                         discovery_retries)
@@ -179,6 +193,26 @@ class InstancesClient:
                     "Exceeded retries while discovering %s, in network %s" %
                     (service_name, network))
             time.sleep(float(RETRY_DELAY))
+
+        # 2. Get List Of Subnets
+        subnetworks = self.subnetwork.get(network, service_name)
+
+        # XXX: I'm hoping this is only possible in moto...
+        if instances and "SubnetId" not in instances[0]:
+            subnetworks[0].instances = [canonicalize_instance_info(instances[0])]
+            subnetworks[1].instances = [canonicalize_instance_info(instances[1])]
+            subnetworks[2].instances = [canonicalize_instance_info(instances[2])]
+            return Service(network=network, name=service_name, subnetworks=subnetworks)
+
+        # 3. Group Services By Subnet
+        for subnetwork in subnetworks:
+            for instance in instances:
+                if subnetwork.subnetwork_id == instance["SubnetId"]:
+                    subnetwork.instances.append(canonicalize_instance_info(instance))
+
+        # 4. Profit!
+        return Service(network=network, name=service_name, subnetworks=subnetworks)
+
 
     def destroy(self, service):
         """
@@ -191,10 +225,14 @@ class InstancesClient:
 
         # Wait for instances to be gone.  Need to do this before we can delete
         # the actual ASG otherwise it will error.
+        def instance_list(service, state):
+            return [instance for subnetwork in service.subnetworks
+                    for instance in subnetwork.instances
+                    if instance.state == state]
+
         asg = self.get(service.network, service.name)
         retries = 0
-        while asg and [instance for instance in asg["Instances"]
-                       if instance["State"] != "terminated"]:
+        while asg and instance_list(asg, "terminated"):
             logger.info("Waiting for instance termination in asg: %s", asg)
             asg = self.get(service.network, service.name)
             retries = retries + 1
@@ -216,7 +254,7 @@ class InstancesClient:
                 raise OperationTimedOut("Timed out waiting for ASG deletion")
             time.sleep(float(10))
 
-        vpc_id = self.network.get(service.network).network_id
+        vpc_id = service.network.network_id
         lc_security_group = self.asg.get_launch_configuration_security_group(
             service.network, service.name)
         self.asg.destroy_launch_configuration(asg_name)

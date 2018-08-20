@@ -39,9 +39,8 @@ def run_blueprint_tester_test(provider, credentials):
     do_setup(client, BLUEPRINT_DIR)
     state = get_state(BLUEPRINT_DIR)
     assert state
-    assert client.network.discover(state["network_name"])
-    assert client.instances.discover(state["network_name"],
-                                     state["service_name"])
+    assert client.network.get(state["network_name"])
+    assert client.service.get(state["network_name"], state["service_name"])
     assert state["setup_info"]
     do_teardown(client, BLUEPRINT_DIR)
     state = get_state(BLUEPRINT_DIR)
@@ -51,9 +50,8 @@ def run_blueprint_tester_test(provider, credentials):
     do_setup(client, BLUEPRINT_DIR)
     state = get_state(BLUEPRINT_DIR)
     assert state
-    assert client.network.discover(state["network_name"])
-    assert client.instances.discover(state["network_name"],
-                                     state["service_name"])
+    assert client.network.get(state["network_name"])
+    assert client.service.get(state["network_name"], state["service_name"])
     assert state["setup_info"]
     do_verify(client, BLUEPRINT_DIR)
     do_verify(client, BLUEPRINT_DIR)

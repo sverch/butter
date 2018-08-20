@@ -9,12 +9,13 @@ import ipaddress
 import boto3
 
 from butter.util import netgraph
-from butter.providers.aws import instances
+import butter.providers.aws.service
 from butter.providers.aws.impl.asg import ASG
 from butter.providers.aws.log import logger
 from butter.util.exceptions import BadEnvironmentStateException, DisallowedOperationException
 from butter.util.public_blocks import get_public_blocks
-from butter.types.networking import Service, CidrBlock
+from butter.types.common import Service, Path
+from butter.types.networking import CidrBlock
 
 
 class PathsClient:
@@ -23,7 +24,7 @@ class PathsClient:
     """
     def __init__(self, credentials):
         self.credentials = credentials
-        self.instances = instances.InstancesClient(credentials)
+        self.service = butter.providers.aws.service.ServiceClient(credentials)
         self.asg = ASG(credentials)
 
     def _extract_service_info(self, source, destination, port):
@@ -42,7 +43,7 @@ class PathsClient:
                 "Either destination or source must be a butter.types.networking.Service object")
 
         if (isinstance(source, Service) and isinstance(destination, Service) and
-                source.network_name != destination.network_name):
+                source.network != destination.network):
             raise DisallowedOperationException(
                 "Destination and source must be in the same network if specified as services")
 
@@ -51,8 +52,8 @@ class PathsClient:
         src_sg_id = None
         dest_sg_id = None
         if isinstance(source, Service):
-            src_sg_id = self.asg.get_launch_configuration_security_group(source.network_name,
-                                                                         source.service_name)
+            src_sg_id = self.asg.get_launch_configuration_security_group(source.network.name,
+                                                                         source.name)
             src_ip_permissions.append({
                 'FromPort': port,
                 'ToPort': port,
@@ -71,8 +72,8 @@ class PathsClient:
                     }]
                 })
         if isinstance(destination, Service):
-            dest_sg_id = self.asg.get_launch_configuration_security_group(destination.network_name,
-                                                                          destination.service_name)
+            dest_sg_id = self.asg.get_launch_configuration_security_group(destination.network.name,
+                                                                          destination.name)
             dest_ip_permissions.append({
                 'FromPort': port,
                 'ToPort': port,
@@ -132,14 +133,14 @@ class PathsClient:
         """
         ec2 = boto3.client("ec2")
         sg_to_service = {}
-        for instance in self.instances.list():
+        for service in self.service.list():
             sg_id = self.asg.get_launch_configuration_security_group(
-                instance["Network"], instance["Id"])
+                service.network.name, service.name)
             if sg_id in sg_to_service:
                 raise BadEnvironmentStateException(
                     "Service %s and %s have same security group: %s" %
-                    (sg_to_service[sg_id], instance, sg_id))
-            sg_to_service[sg_id] = instance
+                    (sg_to_service[sg_id], service, sg_id))
+            sg_to_service[sg_id] = service
         security_groups = ec2.describe_security_groups()
 
         def make_rule(source, rule):
@@ -161,11 +162,11 @@ class PathsClient:
             rules = []
             for group in ip_permissions["UserIdGroupPairs"]:
                 service = sg_to_service[group["GroupId"]]
-                rules.append(make_rule(service["Id"], ip_permissions))
+                rules.append(make_rule(service.name, ip_permissions))
             return rules
 
         def get_network(security_group_id):
-            return sg_to_service[security_group_id]["Network"]
+            return sg_to_service[security_group_id].network.name
 
         fw_info = {}
         network = None
@@ -181,7 +182,9 @@ class PathsClient:
             if network not in fw_info:
                 fw_info[network] = {}
             service = sg_to_service[security_group["GroupId"]]
-            fw_info[network][service["Id"]] = rules
+            fw_info[network][service.name] = rules
+
+        # TODO: Return Path objects
         return {network: netgraph.firewalls_to_net(info)
                 for network, info in fw_info.items()}
 

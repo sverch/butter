@@ -38,16 +38,16 @@ def run_instances_test(provider, credentials):
     # Provision all the resources
     test_network = client.network.create(network_name, blueprint=NETWORK_BLUEPRINT)
     if provider == "aws":
-        lb_service = client.instances.create(test_network, "web-lb", AWS_SERVICE_BLUEPRINT, {})
-        web_service = client.instances.create(test_network, "web", AWS_SERVICE_BLUEPRINT, {})
+        lb_service = client.service.create(test_network, "web-lb", AWS_SERVICE_BLUEPRINT, {})
+        web_service = client.service.create(test_network, "web", AWS_SERVICE_BLUEPRINT, {})
     else:
         assert provider == "gce"
-        lb_service = client.instances.create(test_network, "web-lb", GCE_SERVICE_BLUEPRINT, {})
-        web_service = client.instances.create(test_network, "web", GCE_SERVICE_BLUEPRINT, {})
+        lb_service = client.service.create(test_network, "web-lb", GCE_SERVICE_BLUEPRINT, {})
+        web_service = client.service.create(test_network, "web", GCE_SERVICE_BLUEPRINT, {})
 
     def validate_service(network, service):
-        discovered_service = client.instances.discover(network, service.name)
-        assert discovered_service.network == network.name
+        discovered_service = client.service.get(network, service.name)
+        assert discovered_service.network == network
         assert discovered_service.name == service.name
         assert discovered_service == service
         assert isinstance(discovered_service, Service)
@@ -64,7 +64,7 @@ def run_instances_test(provider, credentials):
     if provider == "aws":
         # Networking
         ec2 = boto3.client("ec2")
-        dc_id = client.network.discover(network_name).network_id
+        dc_id = client.network.get(network_name).network_id
         subnets = ec2.describe_subnets(Filters=[{
             'Name': 'vpc-id',
             'Values': [dc_id]}])
@@ -127,7 +127,7 @@ def run_instances_test(provider, credentials):
         assert web_asg_vpc_id == web_lb_asg_vpc_id
 
     # Make sure they are gone when I destroy them
-    client.instances.destroy(lb_service)
+    client.service.destroy(lb_service)
 
     if provider == "aws":
         # Networking
@@ -151,7 +151,7 @@ def run_instances_test(provider, credentials):
         assert asg["LaunchConfigurationName"] == "%s.web" % network_name
 
     # Now destroy the rest
-    client.instances.destroy(web_service)
+    client.service.destroy(web_service)
 
     if provider == "aws":
         # AutoScalingGroups

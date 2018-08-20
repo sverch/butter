@@ -6,15 +6,15 @@ operations that can work with many different cloud providers.
 
 These primitives are:
 
-    - Create a "Network" (also known as VPC, Environment).  e.g. "dev".
-    - Create a named group of instances within that network.  e.g. "dev.public".
+    - Create a "Network" (also known as VPC, Network, Environment).  e.g. "dev".
+    - Create a "Service" within that network.  e.g. "apache-public".
     - Easily control network connections and firewalls.
 
 The goal is to provide an intuitive abstraction that is powerful enough to build
 on, so that building other layers on top is easy and anything built on it is
 automatically cross cloud.
 """
-from butter import network, subnetwork, instances, paths
+from butter import network, service, paths
 
 
 # pylint: disable=too-few-public-methods
@@ -29,8 +29,6 @@ class Client:
         import butter
         client = butter.Client(provider, credentials)
         client.network.*
-        client.subnetwork.*
-        client.instances.*
         client.paths.*
 
     See the documentation on those sub-components for more details.
@@ -38,8 +36,7 @@ class Client:
 
     def __init__(self, provider, credentials):
         self.network = network.NetworkClient(provider, credentials)
-        self.subnetwork = subnetwork.SubnetworkClient(provider, credentials)
-        self.instances = instances.InstancesClient(provider, credentials)
+        self.service = service.ServiceClient(provider, credentials)
         self.paths = paths.PathsClient(provider, credentials)
 
     # pylint: disable=too-many-locals
@@ -54,7 +51,7 @@ class Client:
         """
         paths_info = self.paths.list()
         graph_string = "digraph services {\n\n"
-        instances_info = self.instances.list()
+        instances_info = self.service.list()
         cluster_num = 0
 
         for network_info in self.network.list()["Named"]:

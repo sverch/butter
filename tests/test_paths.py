@@ -35,12 +35,12 @@ def run_paths_test(provider, credentials):
     # Provision all the resources
     test_network = client.network.create(network_name, blueprint=NETWORK_BLUEPRINT)
     if provider == "aws":
-        lb_service = client.instances.create(test_network, "web-lb", AWS_SERVICE_BLUEPRINT, {})
-        web_service = client.instances.create(test_network, "web", AWS_SERVICE_BLUEPRINT, {})
+        lb_service = client.service.create(test_network, "web-lb", AWS_SERVICE_BLUEPRINT, {})
+        web_service = client.service.create(test_network, "web", AWS_SERVICE_BLUEPRINT, {})
     else:
         assert provider == "gce"
-        lb_service = client.instances.create(test_network, "web-lb", GCE_SERVICE_BLUEPRINT, {})
-        web_service = client.instances.create(test_network, "web", GCE_SERVICE_BLUEPRINT, {})
+        lb_service = client.service.create(test_network, "web-lb", GCE_SERVICE_BLUEPRINT, {})
+        web_service = client.service.create(test_network, "web", GCE_SERVICE_BLUEPRINT, {})
 
     # Create CIDR block object for the paths API
     internet = butter.paths.CidrBlock("0.0.0.0/0")
@@ -63,8 +63,8 @@ def run_paths_test(provider, credentials):
     client.paths.remove(internet, lb_service, 80)
     assert not client.paths.internet_accessible(lb_service, 80)
 
-    client.instances.destroy(lb_service)
-    client.instances.destroy(web_service)
+    client.service.destroy(lb_service)
+    client.service.destroy(web_service)
     client.network.destroy(test_network)
 
 @mock_ec2

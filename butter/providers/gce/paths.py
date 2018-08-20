@@ -8,7 +8,8 @@ import ipaddress
 from libcloud.common.google import ResourceNotFoundError
 from butter.providers.gce.driver import get_gce_driver
 from butter.providers.gce.log import logger
-from butter.types.networking import Service, CidrBlock
+from butter.types.common import Service
+from butter.types.networking import CidrBlock
 from butter.util.exceptions import DisallowedOperationException
 from butter.util.public_blocks import get_public_blocks
 

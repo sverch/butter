@@ -2,7 +2,7 @@
 Butter Network
 
 This component should allow for intuitive and transparent control over networks, which are the top
-level containers for groups of instances/services.
+level containers for services.
 """
 from butter.log import logger
 from butter.providers import get_provider

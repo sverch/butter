@@ -31,7 +31,7 @@ class BlueprintTestInterface:
         """
         self.client = client
 
-    def setup_before_tested_service(self, network_name):
+    def setup_before_tested_service(self, network):
         """
         Do any necessary initialization before the service using the blueprint
         can be created.  Create all services in the given network.
@@ -41,8 +41,7 @@ class BlueprintTestInterface:
         raise NotImplementedError(
             "setup_before_tested_service must be implemented in test fixture")
 
-    def setup_after_tested_service(self, network_name, service_name,
-                                   setup_info):
+    def setup_after_tested_service(self, network, service, setup_info):
         """
         Do any necessary initialization after the service using the blueprint
         has been created.

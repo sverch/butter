@@ -1,5 +1,5 @@
 """
-Butter Instances on GCE
+Butter Service on GCE
 
 This is the GCE implmentation for the instances API, a high level interface to manage groups of
 instances.
@@ -8,11 +8,11 @@ import re
 
 from butter.providers.gce.driver import get_gce_driver
 
-from butter.util.blueprint import InstancesBlueprint
+from butter.util.blueprint import ServiceBlueprint
 from butter.util.instance_fitter import get_fitting_instance
 from butter.util.exceptions import (DisallowedOperationException,
                                     BadEnvironmentStateException)
-from butter.providers.gce import subnetwork
+from butter.providers.gce.impl import subnetwork
 from butter.providers.gce.impl.firewalls import Firewalls
 from butter.providers.gce.log import logger
 from butter.providers.gce.schemas import (canonicalize_instances_info,
@@ -21,7 +21,7 @@ from butter.providers.gce.schemas import (canonicalize_instances_info,
 DEFAULT_REGION = "us-east1"
 
 
-class InstancesClient:
+class ServiceClient:
     """
     Client object to manage instances.
     """
@@ -42,7 +42,7 @@ class InstancesClient:
                     blueprint, template_vars)
         self.subnetwork.create(network_name, subnetwork_name,
                                blueprint=blueprint)
-        instances_blueprint = InstancesBlueprint(blueprint, template_vars)
+        instances_blueprint = ServiceBlueprint(blueprint, template_vars)
         az_count = instances_blueprint.availability_zone_count()
 
         def get_image(image_specifier):
