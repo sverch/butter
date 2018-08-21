@@ -34,7 +34,7 @@ def run_paths_test(provider, credentials):
 
     # Provision all the resources
     test_network = client.network.create(network_name, blueprint=NETWORK_BLUEPRINT)
-    if provider == "aws":
+    if provider in ["aws", "mock-aws"]:
         lb_service = client.service.create(test_network, "web-lb", AWS_SERVICE_BLUEPRINT, {})
         web_service = client.service.create(test_network, "web", AWS_SERVICE_BLUEPRINT, {})
     else:
@@ -76,7 +76,7 @@ def test_paths_mock():
     """
     Run tests using the mock aws driver (moto).
     """
-    run_paths_test(provider="aws", credentials={})
+    run_paths_test(provider="mock-aws", credentials={})
 
 @pytest.mark.aws
 def test_paths_aws():

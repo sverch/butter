@@ -14,7 +14,7 @@ class PathsClient:
     Client object to interact with paths between resources.
     """
     def __init__(self, credentials):
-        self.paths = butter.providers.aws.impl.paths.PathsClient(boto3, credentials, mock=False)
+        self.paths = butter.providers.aws.impl.paths.PathsClient(boto3, credentials, mock=True)
 
 
     def add(self, source, destination, port):

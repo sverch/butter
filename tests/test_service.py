@@ -37,7 +37,7 @@ def run_instances_test(provider, credentials):
 
     # Provision all the resources
     test_network = client.network.create(network_name, blueprint=NETWORK_BLUEPRINT)
-    if provider == "aws":
+    if provider in ["aws", "mock-aws"]:
         lb_service = client.service.create(test_network, "web-lb", AWS_SERVICE_BLUEPRINT, {})
         web_service = client.service.create(test_network, "web", AWS_SERVICE_BLUEPRINT, {})
     else:
@@ -61,7 +61,7 @@ def run_instances_test(provider, credentials):
     validate_service(test_network, lb_service)
     validate_service(test_network, web_service)
 
-    if provider == "aws":
+    if provider in ["aws", "mock-aws"]:
         # Networking
         ec2 = boto3.client("ec2")
         dc_id = client.network.get(network_name).network_id
@@ -129,7 +129,7 @@ def run_instances_test(provider, credentials):
     # Make sure they are gone when I destroy them
     client.service.destroy(lb_service)
 
-    if provider == "aws":
+    if provider in ["aws", "mock-aws"]:
         # Networking
         ec2 = boto3.client("ec2")
         subnets = ec2.describe_subnets(Filters=[{
@@ -153,7 +153,7 @@ def run_instances_test(provider, credentials):
     # Now destroy the rest
     client.service.destroy(web_service)
 
-    if provider == "aws":
+    if provider in ["aws", "mock-aws"]:
         # AutoScalingGroups
         autoscaling = boto3.client("autoscaling")
         asgs = autoscaling.describe_auto_scaling_groups(
@@ -176,7 +176,7 @@ def test_instances_mock():
     """
     Run tests using the mock aws driver (moto).
     """
-    run_instances_test(provider="aws", credentials={})
+    run_instances_test(provider="mock-aws", credentials={})
 
 @pytest.mark.aws
 def test_instances_aws():

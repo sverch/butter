@@ -56,7 +56,7 @@ def test_network_mock():
     """
     Run tests using the mock aws driver (moto).
     """
-    run_network_test(provider="aws", credentials={})
+    run_network_test(provider="mock-aws", credentials={})
 
 
 @pytest.mark.aws

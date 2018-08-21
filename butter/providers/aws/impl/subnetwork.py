@@ -9,11 +9,10 @@ it might go away.
 """
 import math
 import time
-import boto3
 
 from butter.util.blueprint import ServiceBlueprint
 from butter.util.exceptions import BadEnvironmentStateException
-import butter.providers.aws.network
+import butter.providers.aws.impl.network
 from butter.providers.aws.impl.internet_gateways import InternetGateways
 from butter.providers.aws.impl.subnets import Subnets
 from butter.providers.aws.impl.availability_zones import AvailabilityZones
@@ -29,12 +28,13 @@ class SubnetworkClient:
     Client object to manage subnetworks.
     """
 
-    def __init__(self, credentials):
+    def __init__(self, driver, credentials, mock=False):
+        self.driver = driver
         self.credentials = credentials
-        self.network = butter.providers.aws.network.NetworkClient(credentials)
-        self.internet_gateways = InternetGateways(credentials)
-        self.subnets = Subnets(credentials)
-        self.availability_zones = AvailabilityZones(credentials)
+        self.network = butter.providers.aws.impl.network.NetworkClient(driver, credentials, mock)
+        self.internet_gateways = InternetGateways(driver, credentials)
+        self.subnets = Subnets(driver, credentials)
+        self.availability_zones = AvailabilityZones(driver, credentials, mock)
 
     def create(self, network, subnetwork_name, blueprint):
         """
@@ -72,7 +72,7 @@ class SubnetworkClient:
         2. Create and attach internet gateway only if it doesn't exist.
         4. Add route to it from all subnets.
         """
-        ec2 = boto3.client("ec2")
+        ec2 = self.driver.client("ec2")
 
         # 1. Get the internet gateway for this VPC.
         igw_id = self.internet_gateways.get_internet_gateway(network.network_id)
@@ -92,12 +92,11 @@ class SubnetworkClient:
                              GatewayId=igw_id,
                              DestinationCidrBlock="0.0.0.0/0")
 
-    # pylint: disable=no-self-use
     def get(self, network, subnetwork_name):
         """
         Get a subnetwork group in "network" named "subnetwork_name".
         """
-        ec2 = boto3.client("ec2")
+        ec2 = self.driver.client("ec2")
         dc_id = network.network_id
         subnets = ec2.describe_subnets(Filters=[{'Name': "vpc-id",
                                                  'Values': [dc_id]},
@@ -120,7 +119,7 @@ class SubnetworkClient:
         3. Delete all subnets.
         4. Wait until subnets are deleted.
         """
-        ec2 = boto3.client("ec2")
+        ec2 = self.driver.client("ec2")
         subnet_ids = [subnet_info.subnetwork_id for subnet_info
                       in self.get(network, subnetwork_name)]
 
@@ -179,12 +178,11 @@ class SubnetworkClient:
             retries = retries + 1
             time.sleep(1)
 
-    # pylint: disable=no-self-use
     def list(self):
         """
         Return a list of all subnetworks.
         """
-        ec2 = boto3.client("ec2")
+        ec2 = self.driver.client("ec2")
 
         def get_name(tagged_resource):
             if "Tags" not in tagged_resource:
