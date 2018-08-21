@@ -44,17 +44,14 @@ class Client:
         """
         Return a human readable formatted string representation of the paths
         graph.
-
-        Right now this is designed to print a dotfile that can be consumed by
-        graphviz.  This should probably be cleaned up/replaced with a real
-        visualization but for now it's good enough to show how this should work.
         """
         paths_info = self.paths.list()
         graph_string = "digraph services {\n\n"
+
         instances_info = self.service.list()
         cluster_num = 0
 
-        for network_info in self.network.list()["Named"]:
+        for network_info in self.network.list():
             path_info = paths_info.get(network_info["Name"], {})
 
             # We need this to get nodes with no rules set up

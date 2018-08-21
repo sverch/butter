@@ -6,9 +6,7 @@ routes between services, doing the conversion to security groups and firewall
 rules.
 """
 import ipaddress
-import boto3
 
-from butter.util import netgraph
 import butter.providers.aws.service
 from butter.providers.aws.impl.asg import ASG
 from butter.providers.aws.log import logger
@@ -111,9 +109,9 @@ class PathsClient:
                 "Destination must be a butter.types.networking.Service object")
 
         dest_sg_id, _, _, src_ip_permissions = self._extract_service_info(source, destination, port)
-        ec2 = boto3.client("ec2")
+        ec2 = self.driver.client("ec2")
         ec2.authorize_security_group_ingress(GroupId=dest_sg_id, IpPermissions=src_ip_permissions)
-        return True
+        return Path(source, destination, "tcp", port)
 
     def remove(self, source, destination, port):
         """
@@ -124,7 +122,7 @@ class PathsClient:
             raise DisallowedOperationException(
                 "Destination must be a butter.types.networking.Service object")
 
-        ec2 = boto3.client("ec2")
+        ec2 = self.driver.client("ec2")
         dest_sg_id, _, _, src_ip_permissions = self._extract_service_info(source, destination, port)
         ec2.revoke_security_group_ingress(GroupId=dest_sg_id, IpPermissions=src_ip_permissions)
 
@@ -133,7 +131,7 @@ class PathsClient:
         """
         List all paths and return a dictionary structure representing a graph.
         """
-        ec2 = boto3.client("ec2")
+        ec2 = self.driver.client("ec2")
         sg_to_service = {}
         for service in self.service.list():
             sg_id = self.asg.get_launch_configuration_security_group(
@@ -145,50 +143,38 @@ class PathsClient:
             sg_to_service[sg_id] = service
         security_groups = ec2.describe_security_groups()
 
-        def make_rule(source, rule):
-            return {
-                "source": source,
-                "protocol": rule["IpProtocol"],
-                "port": rule.get("FromPort", "N/A"),
-                "type": "ingress"
-            }
+        def make_path(destination, source, rule):
+            return Path(source, destination, rule["IpProtocol"], rule.get("FromPort", "N/A"))
 
-        def get_sg_rules(ip_permissions):
-            rules = []
+        def get_sg_paths(destination, ip_permissions):
+            paths = []
             for ip_range in ip_permissions["IpRanges"]:
                 source = ip_range.get("CidrIp", "0.0.0.0/0")
-                rules.append(make_rule(source, ip_permissions))
-            return rules
+                paths.append(make_path(destination, source, ip_permissions))
+            return paths
 
-        def get_cidr_rules(ip_permissions):
-            rules = []
+        def get_cidr_paths(destination, ip_permissions):
+            paths = []
             for group in ip_permissions["UserIdGroupPairs"]:
                 service = sg_to_service[group["GroupId"]]
-                rules.append(make_rule(service.name, ip_permissions))
-            return rules
+                paths.append(make_path(destination, service.name, ip_permissions))
+            return paths
 
-        def get_network(security_group_id):
-            return sg_to_service[security_group_id].network.name
-
-        fw_info = {}
-        network = None
+        paths = []
         for security_group in security_groups["SecurityGroups"]:
+
             if security_group["GroupId"] not in sg_to_service:
+                logger.debug("Security group %s is apparently not attached to a service.  Skipping",
+                             security_group["GroupId"])
                 continue
-            rules = []
+
+            service = sg_to_service[security_group["GroupId"]]
             for ip_permissions in security_group["IpPermissions"]:
                 logger.debug("ip_permissions: %s", ip_permissions)
-                rules.extend(get_cidr_rules(ip_permissions))
-                rules.extend(get_sg_rules(ip_permissions))
-            network = get_network(security_group["GroupId"])
-            if network not in fw_info:
-                fw_info[network] = {}
-            service = sg_to_service[security_group["GroupId"]]
-            fw_info[network][service.name] = rules
+                paths.extend(get_cidr_paths(service, ip_permissions))
+                paths.extend(get_sg_paths(service, ip_permissions))
 
-        # TODO: Return Path objects
-        return {network: netgraph.firewalls_to_net(info)
-                for network, info in fw_info.items()}
+        return paths
 
     def internet_accessible(self, service, port):
         """
@@ -203,7 +189,7 @@ class PathsClient:
         """
         Return true if there is a route from "source" to "destination".
         """
-        ec2 = boto3.client("ec2")
+        ec2 = self.driver.client("ec2")
         dest_sg_id, src_sg_id, _, src_ip_permissions = self._extract_service_info(
             source, destination, port)
         security_group = ec2.describe_security_groups(GroupIds=[dest_sg_id])
