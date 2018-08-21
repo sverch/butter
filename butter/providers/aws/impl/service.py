@@ -6,7 +6,7 @@ instances.
 """
 import time
 import json
-import ipaddress
+import itertools
 import requests
 import dateutil.parser
 from botocore.exceptions import ClientError
@@ -109,9 +109,9 @@ class ServiceClient:
                 logger.info("Waiting for instance creation in asg: %s", asg)
                 asg = self.get(network, service_name)
                 retries = retries + 1
-                if retries > 60:
+                if retries > RETRY_COUNT:
                     raise OperationTimedOut("Timed out waiting for ASG scale down")
-                time.sleep(float(10))
+                time.sleep(RETRY_DELAY)
         wait_until("running")
 
         return self.get(network, service_name)
@@ -194,21 +194,22 @@ class ServiceClient:
                 raise OperationTimedOut(
                     "Exceeded retries while discovering %s, in network %s" %
                     (service_name, network))
-            time.sleep(float(RETRY_DELAY))
+            time.sleep(RETRY_DELAY)
 
         # 2. Get List Of Subnets
         subnetworks = self.subnetwork.get(network, service_name)
 
+        # NOTE: In moto instance objects do not include a "SubnetId" and the IP addresses are
+        # assigned randomly in the VPC, so for now just stripe instances across subnets.
+        if self.mock:
+            for instance, subnetwork, in zip(instances, itertools.cycle(subnetworks)):
+                subnetwork.instances.append(canonicalize_instance_info(instance))
+            return Service(network=network, name=service_name, subnetworks=subnetworks)
+
         # 3. Group Services By Subnet
         for subnetwork in subnetworks:
             for instance in instances:
-                # NOTE: In moto instance objects do not include a "SubnetId" so for the mock client
-                # use the "PrivateIp" field.
-                if self.mock:
-                    if (ipaddress.IPv4Network(subnetwork.cidr_block).overlaps(
-                            ipaddress.IPv4Network(instance["PrivateIpAddress"]))):
-                        subnetwork.instances.append(canonicalize_instance_info(instance))
-                elif subnetwork.subnetwork_id == instance["SubnetId"]:
+                if subnetwork.subnetwork_id == instance["SubnetId"]:
                     subnetwork.instances.append(canonicalize_instance_info(instance))
 
         # 4. Profit!
