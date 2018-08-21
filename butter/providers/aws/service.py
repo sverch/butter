@@ -6,6 +6,7 @@ instances.
 """
 import time
 import json
+import itertools
 import boto3
 import requests
 import dateutil.parser
@@ -197,11 +198,12 @@ class ServiceClient:
         # 2. Get List Of Subnets
         subnetworks = self.subnetwork.get(network, service_name)
 
-        # XXX: I'm hoping this is only possible in moto...
+        # TODO: This is a moto issue.  File an issue or fix it, because this is bad...  Either that
+        # or special case it once I make the "mock-aws" driver.  I might just have to do that as
+        # part of this patch.
         if instances and "SubnetId" not in instances[0]:
-            subnetworks[0].instances = [canonicalize_instance_info(instances[0])]
-            subnetworks[1].instances = [canonicalize_instance_info(instances[1])]
-            subnetworks[2].instances = [canonicalize_instance_info(instances[2])]
+            for subnetwork, instance in zip(itertools.cycle(subnetworks), instances):
+                subnetwork.instances = [canonicalize_instance_info(instance)]
             return Service(network=network, name=service_name, subnetworks=subnetworks)
 
         # 3. Group Services By Subnet
