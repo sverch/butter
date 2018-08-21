@@ -64,7 +64,8 @@ class Path:
     """
     Simple container to hold path information.
     """
-    source = attr.ib(type=Service)
-    destination = attr.ib(type=Service)
+    network = attr.ib(type=Network)
+    source = attr.ib()
+    destination = attr.ib()
     protocol = attr.ib(type=str)
     port = attr.ib(type=str)

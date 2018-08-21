@@ -111,7 +111,7 @@ class PathsClient:
         dest_sg_id, _, _, src_ip_permissions = self._extract_service_info(source, destination, port)
         ec2 = self.driver.client("ec2")
         ec2.authorize_security_group_ingress(GroupId=dest_sg_id, IpPermissions=src_ip_permissions)
-        return Path(source, destination, "tcp", port)
+        return Path(destination.network, source, destination, "tcp", port)
 
     def remove(self, source, destination, port):
         """
@@ -144,7 +144,8 @@ class PathsClient:
         security_groups = ec2.describe_security_groups()
 
         def make_path(destination, source, rule):
-            return Path(source, destination, rule["IpProtocol"], rule.get("FromPort", "N/A"))
+            return Path(destination.network, source, destination, rule["IpProtocol"],
+                        rule.get("FromPort", "N/A"))
 
         def get_sg_paths(destination, ip_permissions):
             paths = []

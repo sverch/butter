@@ -46,9 +46,21 @@ class Client:
         graph.
         """
         paths_info = self.paths.list()
+        net_to_path = {}
+        for path in paths_info:
+            if path.network.name not in net_to_path:
+                net_to_path[path.network.name] = []
+            net_to_path[path.network.name].append(path)
+
+        services_info = self.service.list()
+        net_to_service = {}
+        for service in services_info:
+            if service.network.name not in net_to_service:
+                net_to_service[service.network.name] = []
+            net_to_service[service.network.name].append(service)
+
         graph_string = "digraph services {\n\n"
 
-        instances_info = self.service.list()
         cluster_num = 0
 
         for network_info in self.network.list():
