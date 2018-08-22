@@ -12,7 +12,7 @@ from butter.providers.aws.impl.asg import ASG
 from butter.providers.aws.log import logger
 from butter.util.exceptions import BadEnvironmentStateException, DisallowedOperationException
 from butter.util.public_blocks import get_public_blocks
-from butter.types.common import Service, Path
+from butter.types.common import Service, Path, Subnetwork
 from butter.types.networking import CidrBlock
 
 
@@ -147,18 +147,24 @@ class PathsClient:
             return Path(destination.network, source, destination, rule["IpProtocol"],
                         rule.get("FromPort", "N/A"))
 
-        def get_sg_paths(destination, ip_permissions):
-            paths = []
+        def get_cidr_paths(destination, ip_permissions):
+            subnets = []
             for ip_range in ip_permissions["IpRanges"]:
-                source = ip_range.get("CidrIp", "0.0.0.0/0")
+                subnets.append(Subnetwork(subnetwork_id=None, name=None,
+                                          cidr_block=ip_range["CidrIp"],
+                                          region=None, availability_zone=None, instances=[]))
+            # We treat an explicit CIDR block as a special case of a service with no name.
+            paths = []
+            if subnets:
+                source = Service(network=None, name=None, subnetworks=subnets)
                 paths.append(make_path(destination, source, ip_permissions))
             return paths
 
-        def get_cidr_paths(destination, ip_permissions):
+        def get_sg_paths(destination, ip_permissions):
             paths = []
             for group in ip_permissions["UserIdGroupPairs"]:
                 service = sg_to_service[group["GroupId"]]
-                paths.append(make_path(destination, service.name, ip_permissions))
+                paths.append(make_path(destination, service, ip_permissions))
             return paths
 
         paths = []

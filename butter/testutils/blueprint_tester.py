@@ -111,8 +111,7 @@ def setup(client, blueprint_dir):
 
     logger.info("Creating services using the blueprint under test")
     blueprint = get_blueprint(blueprint_dir)
-    service = client.service.create(network_name, service_name, blueprint,
-                                    setup_info.blueprint_vars)
+    service = client.service.create(network, service_name, blueprint, setup_info.blueprint_vars)
     assert service.subnetworks
     for subnetwork in service.subnetworks:
         assert subnetwork.instances
@@ -129,8 +128,9 @@ def verify(client, blueprint_dir):
     blueprint_tester = get_blueprint_tester(client, blueprint_dir)
     setup_info = SetupInfo(state["setup_info"]["deployment_info"],
                            state["setup_info"]["blueprint_vars"])
-    blueprint_tester.verify(state["network_name"], state["service_name"],
-                            setup_info)
+    network = client.network.get(state["network_name"])
+    service = client.service.get(network, state["service_name"])
+    blueprint_tester.verify(network, service, setup_info)
     logger.info("Verify successful!")
 
 def teardown(client, blueprint_dir):

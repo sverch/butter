@@ -110,7 +110,7 @@ class ServiceClient:
                 asg = self.get(network, service_name)
                 retries = retries + 1
                 if retries > RETRY_COUNT:
-                    raise OperationTimedOut("Timed out waiting for ASG scale down")
+                    raise OperationTimedOut("Timed out waiting for ASG to be created")
                 time.sleep(RETRY_DELAY)
         wait_until("running")
 

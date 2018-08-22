@@ -49,7 +49,7 @@ class BlueprintTestInterface:
         raise NotImplementedError(
             "setup_after_tested_service must be implemented in test fixture")
 
-    def verify(self, network_name, service_name, setup_info):
+    def verify(self, network, service, setup_info):
         """
         Called after the service using the blueprint is created.  Do any final
         setup and then any verification to check that the service is behaving as

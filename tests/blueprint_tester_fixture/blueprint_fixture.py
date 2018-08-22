@@ -42,11 +42,11 @@ class BlueprintTest(BlueprintTestInterface):
         self.client.paths.add(service, internal_service, 80)
         self.client.paths.add(internet, service, 80)
 
-    def verify(self, network_name, service_name, setup_info):
+    def verify(self, network, service, setup_info):
         """
         Given the network name and the service name of the service under test,
         verify that it's behaving as expected.
         """
         assert setup_info.deployment_info["service_name"] == SERVICE_NAME
-        assert self.client.service.get(network_name, service_name)
-        assert self.client.service.get(network_name, SERVICE_NAME)
+        assert self.client.service.get(network, service.name)
+        assert self.client.service.get(network, SERVICE_NAME)

@@ -40,7 +40,7 @@ def run_blueprint_tester_test(provider, credentials):
     state = get_state(BLUEPRINT_DIR)
     assert state
     assert client.network.get(state["network_name"])
-    assert client.service.get(state["network_name"], state["service_name"])
+    assert client.service.get(client.network.get(state["network_name"]), state["service_name"])
     assert state["setup_info"]
     do_teardown(client, BLUEPRINT_DIR)
     state = get_state(BLUEPRINT_DIR)
@@ -51,7 +51,7 @@ def run_blueprint_tester_test(provider, credentials):
     state = get_state(BLUEPRINT_DIR)
     assert state
     assert client.network.get(state["network_name"])
-    assert client.service.get(state["network_name"], state["service_name"])
+    assert client.service.get(client.network.get(state["network_name"]), state["service_name"])
     assert state["setup_info"]
     do_verify(client, BLUEPRINT_DIR)
     do_verify(client, BLUEPRINT_DIR)
@@ -67,4 +67,4 @@ def test_blueprint_tester_mock():
     """
     Test blueprint test framework against moto (mock aws).
     """
-    run_blueprint_tester_test(provider="aws", credentials={})
+    run_blueprint_tester_test(provider="mock-aws", credentials={})
