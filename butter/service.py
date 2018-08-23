@@ -29,16 +29,17 @@ class ServiceClient:
     def __init__(self, provider, credentials):
         self.service = get_provider(provider).service.ServiceClient(credentials)
 
-    def create(self, network, service_name, blueprint, template_vars=None):
+    # pylint: disable=too-many-arguments
+    def create(self, network, service_name, blueprint, template_vars=None, count=None):
         """
         Create a service in "network" named "service_name" with blueprint file at "blueprint".
 
         "template_vars" are passed to the initialization scripts as jinja2
         variables.
         """
-        logger.info('Creating service %s in network %s with blueprint %s and template_vars %s',
-                    service_name, network, blueprint, template_vars)
-        return self.service.create(network, service_name, blueprint, template_vars)
+        logger.info('Creating service %s in network %s with blueprint %s, template_vars %s, '
+                    'and count %s', service_name, network, blueprint, template_vars, count)
+        return self.service.create(network, service_name, blueprint, template_vars, count)
 
     def get(self, network, service_name):
         """

@@ -19,17 +19,20 @@ class ServiceClient:
                                                                        mock=False)
 
     # pylint: disable=too-many-arguments
-    def create(self, network, service_name, blueprint,
-               template_vars=None, count=3):
+    def create(self, network, service_name, blueprint, template_vars, count):
         """
-        Create a group of instances in "network" named "service_name" with blueprint file at
-        "blueprint".
+        Create a service in "network" named "service_name" with blueprint file at "blueprint".
+
+        "template_vars" are passed to the initialization scripts as jinja2 variables.
+
+        "count" is the number of instances to create for the service.  Default is one for each
+        availability zone.
         """
         return self.service.create(network, service_name, blueprint, template_vars, count)
 
     def list(self):
         """
-        List all instance groups.
+        List all services.
         """
         return self.service.list()
 

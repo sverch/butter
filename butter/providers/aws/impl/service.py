@@ -43,9 +43,8 @@ class ServiceClient:
         self.asg = ASG(driver, credentials)
         self.security_groups = SecurityGroups(driver, credentials)
 
-    # pylint: disable=too-many-arguments
-    def create(self, network, service_name, blueprint,
-               template_vars=None, count=3):
+    # pylint: disable=too-many-arguments, too-many-locals
+    def create(self, network, service_name, blueprint, template_vars=None, count=None):
         """
         Create a group of instances in "network" named "service_name" with blueprint file at
         "blueprint".
@@ -88,11 +87,16 @@ class ServiceClient:
         create_launch_configuration(asg_name, blueprint, template_vars)
 
         # Auto Scaling Group
+        if count:
+            instance_count = count
+        else:
+            instances_blueprint = ServiceBlueprint(blueprint, template_vars)
+            instance_count = instances_blueprint.availability_zone_count()
         autoscaling = self.driver.client("autoscaling")
         autoscaling.create_auto_scaling_group(
             AutoScalingGroupName=str(asg_name),
-            LaunchConfigurationName=str(asg_name), MinSize=count,
-            MaxSize=count, DesiredCapacity=count,
+            LaunchConfigurationName=str(asg_name), MinSize=instance_count,
+            MaxSize=instance_count, DesiredCapacity=instance_count,
             VPCZoneIdentifier=",".join(subnet_ids), LoadBalancerNames=[],
             HealthCheckType='ELB', HealthCheckGracePeriod=120)
 
@@ -105,7 +109,7 @@ class ServiceClient:
                         if instance.state == state]
 
             retries = 0
-            while len(instance_list(asg, state)) < count:
+            while len(instance_list(asg, state)) < instance_count:
                 logger.info("Waiting for instance creation in asg: %s", asg)
                 asg = self.get(network, service_name)
                 retries = retries + 1

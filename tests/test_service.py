@@ -39,13 +39,13 @@ def run_instances_test(provider, credentials):
     test_network = client.network.create(network_name, blueprint=NETWORK_BLUEPRINT)
     if provider in ["aws", "mock-aws"]:
         lb_service = client.service.create(test_network, "web-lb", AWS_SERVICE_BLUEPRINT, {})
-        web_service = client.service.create(test_network, "web", AWS_SERVICE_BLUEPRINT, {})
+        web_service = client.service.create(test_network, "web", AWS_SERVICE_BLUEPRINT, {}, count=6)
     else:
         assert provider == "gce"
         lb_service = client.service.create(test_network, "web-lb", GCE_SERVICE_BLUEPRINT, {})
-        web_service = client.service.create(test_network, "web", GCE_SERVICE_BLUEPRINT, {})
+        web_service = client.service.create(test_network, "web", GCE_SERVICE_BLUEPRINT, {}, count=6)
 
-    def validate_service(network, service):
+    def validate_service(network, service, count):
         discovered_service = client.service.get(network, service.name)
         assert discovered_service.network == network
         assert discovered_service.name == service.name
@@ -56,10 +56,10 @@ def run_instances_test(provider, credentials):
         for subnetwork in discovered_service.subnetworks:
             assert subnetwork.instances
             instances.extend(subnetwork.instances)
-        assert len(instances) == 3
+        assert len(instances) == count
 
-    validate_service(test_network, lb_service)
-    validate_service(test_network, web_service)
+    validate_service(test_network, lb_service, 3)
+    validate_service(test_network, web_service, 6)
 
     if provider in ["aws", "mock-aws"]:
         # Networking

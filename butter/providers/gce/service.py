@@ -4,6 +4,7 @@ Butter Service on GCE
 This is the GCE implmentation for the service API, a high level interface to manage services.
 """
 import ipaddress
+import itertools
 import re
 
 from butter.providers.gce.driver import get_gce_driver
@@ -35,7 +36,8 @@ class ServiceClient:
         self.network = NetworkClient(credentials)
         self.firewalls = Firewalls(self.driver)
 
-    def create(self, network, service_name, blueprint, template_vars):
+    # pylint: disable=too-many-arguments, too-many-locals
+    def create(self, network, service_name, blueprint, template_vars, count):
         """
         Create a service in "network" named "service_name" with blueprint file at "blueprint".
         """
@@ -45,6 +47,13 @@ class ServiceClient:
                                blueprint=blueprint)
         instances_blueprint = ServiceBlueprint(blueprint, template_vars)
         az_count = instances_blueprint.availability_zone_count()
+        availability_zones = list(itertools.islice(self._get_availability_zones(), az_count))
+        if len(availability_zones) < az_count:
+            raise DisallowedOperationException("Do not have %s availability zones: %s" % (
+                az_count, availability_zones))
+        instance_count = az_count
+        if count:
+            instance_count = count
 
         def get_image(image_specifier):
             images = [image for image in self.driver.list_images() if re.match(image_specifier,
@@ -59,23 +68,21 @@ class ServiceClient:
 
         image = get_image(instances_blueprint.image())
         instance_type = get_fitting_instance(self, blueprint)
-        for zone in self._get_availability_zones():
-            if az_count == 0:
-                break
+        for availability_zone, instance_num in zip(itertools.cycle(availability_zones),
+                                                   range(0, instance_count - 1)):
             full_subnetwork_name = "%s-%s" % (network.name, service_name)
-            instance_name = "%s-%s" % (full_subnetwork_name, az_count)
+            instance_name = "%s-%s" % (full_subnetwork_name, instance_num)
             metadata = [
                 {"key": "startup-script", "value":
                  instances_blueprint.runtime_scripts()},
                 {"key": "network", "value": network.name},
                 {"key": "subnetwork", "value": service_name}
             ]
-            logger.info('Creating instance %s in zone %s', instance_name, zone)
-            self.driver.create_node(instance_name, instance_type, image, location=zone,
+            logger.info('Creating instance %s in zone %s', instance_name, availability_zone)
+            self.driver.create_node(instance_name, instance_type, image, location=availability_zone,
                                     ex_network=network.name, ex_subnetwork=full_subnetwork_name,
                                     external_ip="ephemeral", ex_metadata=metadata,
                                     ex_tags=[full_subnetwork_name])
-            az_count = az_count - 1
         return self.get(network, service_name)
 
     def get(self, network, service_name):
