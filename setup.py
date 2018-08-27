@@ -40,7 +40,8 @@ TESTS_REQUIRED = [
     'pytest-xdist',
     'moto',
     'tox',
-    'pylint'
+    'pylint',
+    'paramiko'
 ]
 
 # What packages are optional?

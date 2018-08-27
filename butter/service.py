@@ -32,7 +32,8 @@ class ServiceClient:
         self.service = get_provider(provider).service.ServiceClient(credentials)
 
     # pylint: disable=too-many-arguments
-    def create(self, network, service_name, blueprint, template_vars=None, count=None):
+    def create(self, network, service_name, blueprint, template_vars=None, count=None,
+               proprietary_ssh_setup=None):
         """
         Create a service in "network" named "service_name" with blueprint file at "blueprint".
 
@@ -44,7 +45,8 @@ class ServiceClient:
         if not isinstance(network, Network):
             raise DisallowedOperationException(
                 "Network argument to create must be of type butter.types.common.Network")
-        return self.service.create(network, service_name, blueprint, template_vars, count)
+        return self.service.create(network, service_name, blueprint, template_vars, count,
+                                   proprietary_ssh_setup)
 
     def get(self, network, service_name):
         """

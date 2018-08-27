@@ -12,6 +12,7 @@ pylint = "*"
 [packages]
 "e1839a8" = {path = ".", editable = true}
 pytest-xdist = "*"
+paramiko = "*"
 
 [requires]
 python_version = "3.6"
