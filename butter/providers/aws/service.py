@@ -19,7 +19,7 @@ class ServiceClient:
                                                                        mock=False)
 
     # pylint: disable=too-many-arguments
-    def create(self, network, service_name, blueprint, template_vars, count):
+    def create(self, network, service_name, blueprint, template_vars, count, proprietary_ssh_setup):
         """
         Create a service in "network" named "service_name" with blueprint file at "blueprint".
 
@@ -28,7 +28,8 @@ class ServiceClient:
         "count" is the number of instances to create for the service.  Default is one for each
         availability zone.
         """
-        return self.service.create(network, service_name, blueprint, template_vars, count)
+        return self.service.create(network, service_name, blueprint, template_vars, count,
+                                   proprietary_ssh_setup)
 
     def list(self):
         """

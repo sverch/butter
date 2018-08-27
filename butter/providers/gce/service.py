@@ -37,12 +37,15 @@ class ServiceClient:
         self.firewalls = Firewalls(self.driver)
 
     # pylint: disable=too-many-arguments, too-many-locals
-    def create(self, network, service_name, blueprint, template_vars, count):
+    def create(self, network, service_name, blueprint, template_vars, count,
+               proprietary_ssh_setup=None):
         """
         Create a service in "network" named "service_name" with blueprint file at "blueprint".
         """
         logger.info('Creating service %s, %s with blueprint %s and ' 'template_vars %s',
                     network.name, service_name, blueprint, template_vars)
+        if proprietary_ssh_setup:
+            pass
         self.subnetwork.create(network.name, service_name,
                                blueprint=blueprint)
         instances_blueprint = ServiceBlueprint(blueprint, template_vars)

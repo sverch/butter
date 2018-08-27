@@ -44,19 +44,26 @@ class ServiceClient:
         self.security_groups = SecurityGroups(driver, credentials)
 
     # pylint: disable=too-many-arguments, too-many-locals
-    def create(self, network, service_name, blueprint, template_vars=None, count=None):
+    def create(self, network, service_name, blueprint, template_vars=None, count=None,
+               proprietary_ssh_setup=None):
         """
         Create a group of instances in "network" named "service_name" with blueprint file at
         "blueprint".
         """
+        # Subnets
         subnet_ids = [subnet_info.subnetwork_id for subnet_info
                       in self.subnetwork.create(network, service_name,
                                                 blueprint=blueprint)]
 
         # Security Group
         asg_name = AsgName(network=network.name, subnetwork=service_name)
-        vpc_id = network.network_id
-        security_group_id = self.security_groups.create(str(asg_name), vpc_id)
+        security_group_id = self.security_groups.create(str(asg_name), network.network_id)
+
+        # AWS Keypair
+        if proprietary_ssh_setup:
+            ec2 = self.driver.client("ec2")
+            ec2.import_key_pair(KeyName=service_name,
+                                PublicKeyMaterial=proprietary_ssh_setup["key_material"])
 
         # Launch Configuration
         def lookup_ami(ami_name):
@@ -72,19 +79,23 @@ class ServiceClient:
                     result_image = image
             return result_image["ImageId"]
 
-        def create_launch_configuration(asg_name, blueprint, template_vars):
+        def create_launch_configuration(asg_name, service_name, blueprint, template_vars,
+                                        proprietary_ssh_setup):
             instances_blueprint = ServiceBlueprint(blueprint, template_vars)
-            ami_id = lookup_ami(instances_blueprint.image())
-            user_data = instances_blueprint.runtime_scripts()
-            associate_public_ip = instances_blueprint.public_ip()
-            instance_type = get_fitting_instance(self, blueprint)
             autoscaling = self.driver.client("autoscaling")
-            autoscaling.create_launch_configuration(
-                LaunchConfigurationName=str(asg_name), ImageId=ami_id,
-                SecurityGroups=[security_group_id], UserData=user_data,
-                AssociatePublicIpAddress=associate_public_ip,
-                InstanceType=instance_type)
-        create_launch_configuration(asg_name, blueprint, template_vars)
+            kwargs = {
+                "LaunchConfigurationName": str(asg_name),
+                "ImageId": lookup_ami(instances_blueprint.image()),
+                "SecurityGroups": [security_group_id],
+                "UserData": instances_blueprint.runtime_scripts(),
+                "AssociatePublicIpAddress": instances_blueprint.public_ip(),
+                "InstanceType": get_fitting_instance(self, blueprint)
+                }
+            if proprietary_ssh_setup:
+                kwargs["KeyName"] = service_name
+            autoscaling.create_launch_configuration(**kwargs)
+        create_launch_configuration(asg_name, service_name, blueprint, template_vars,
+                                    proprietary_ssh_setup)
 
         # Auto Scaling Group
         if count:
@@ -274,6 +285,15 @@ class ServiceClient:
                                                 RETRY_COUNT, RETRY_DELAY)
 
         self.subnetwork.destroy(service.network, service.name)
+
+        # Delete the keypair associated with this service if it's unused, so we don't leak.
+        if not self.mock:
+            # Filtering using this filter dict is not implemented in moto.
+            ec2 = self.driver.client("ec2")
+            instances_using_keypair = ec2.describe_instances(Filters=[{"Name": "key-name",
+                                                                       "Values": [service.name]}])
+            if not [i for r in instances_using_keypair["Reservations"] for i in r["Instances"]]:
+                ec2.delete_key_pair(KeyName=service.name)
 
     def node_types(self):
         """
