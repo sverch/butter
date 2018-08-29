@@ -44,8 +44,6 @@ class ServiceClient:
         """
         logger.info('Creating service %s, %s with blueprint %s and ' 'template_vars %s',
                     network.name, service_name, blueprint, template_vars)
-        if proprietary_ssh_setup:
-            pass
         self.subnetwork.create(network.name, service_name,
                                blueprint=blueprint)
         instances_blueprint = ServiceBlueprint(blueprint, template_vars)
@@ -82,10 +80,20 @@ class ServiceClient:
                 {"key": "subnetwork", "value": service_name}
             ]
             logger.info('Creating instance %s in zone %s', instance_name, availability_zone)
-            self.driver.create_node(instance_name, instance_type, image, location=availability_zone,
-                                    ex_network=network.name, ex_subnetwork=full_subnetwork_name,
-                                    external_ip="ephemeral", ex_metadata=metadata,
-                                    ex_tags=[full_subnetwork_name])
+            node = self.driver.create_node(instance_name, instance_type, image,
+                                           location=availability_zone, ex_network=network.name,
+                                           ex_subnetwork=full_subnetwork_name,
+                                           external_ip="ephemeral", ex_metadata=metadata,
+                                           ex_tags=[full_subnetwork_name])
+            if proprietary_ssh_setup:
+                # https://cloud.google.com/compute/docs/instances/adding-removing-ssh-keys#instance-only
+                pubkeystring = ("[USERNAME_3]:ssh-rsa [NEW_KEY_VALUE] [USERNAME_3]\n"
+                                "[USERNAME_2]:ssh-rsa [EXISTING_KEY_VALUE_2] [USERNAME_2]")
+                metadata = {
+                    "key": "ssh-keys",
+                    "value": pubkeystring
+                }
+                self.driver.ex_set_node_metadata(node, metadata)
         return self.get(network, service_name)
 
     def get(self, network, service_name):
