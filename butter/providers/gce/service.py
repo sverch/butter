@@ -87,8 +87,8 @@ class ServiceClient:
                                            ex_tags=[full_subnetwork_name])
             if proprietary_ssh_setup:
                 # https://cloud.google.com/compute/docs/instances/adding-removing-ssh-keys#instance-only
-                pubkeystring = ("[USERNAME_3]:ssh-rsa [NEW_KEY_VALUE] [USERNAME_3]\n"
-                                "[USERNAME_2]:ssh-rsa [EXISTING_KEY_VALUE_2] [USERNAME_2]")
+                pubkeystring = ("sshadmin:ssh-rsa %s sshadmin" %
+                                proprietary_ssh_setup["key_material"])
                 metadata = {
                     "key": "ssh-keys",
                     "value": pubkeystring
