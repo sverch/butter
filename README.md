@@ -1,3 +1,5 @@
+*NOTE: This project has moved to https://github.com/getcloudless/cloudless*
+
 # Butter
 
 :warning: :construction: :skull: This is a proof of concept, do not use in
